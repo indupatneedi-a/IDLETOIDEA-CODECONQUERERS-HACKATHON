@@ -1,0 +1,898 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Helpers
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCompositeId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 260 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'induseetalapatneedi@gmail.com' ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
+    }
+
+    function isOwnerRoleUser() {
+      return isVerifiedUser() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+    }
+
+    function isBoundedStringList(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is string);
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll([
+          'id', 'displayName', 'email', 'role', 'userTypeDescription',
+          'verificationState', 'standing', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'displayName', 'email', 'phone', 'role', 'organisationName',
+          'userTypeDescription', 'verificationState', 'standing', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.email is string && data.email.size() <= 200 &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 40)) &&
+        (!('organisationName' in data) || (data.organisationName is string && data.organisationName.size() <= 160)) &&
+        data.role in ['requester', 'owner', 'supervisor', 'admin'] &&
+        data.userTypeDescription is string && data.userTypeDescription.size() >= 1 && data.userTypeDescription.size() <= 160 &&
+        data.verificationState in ['unverified', 'verified', 'flagged', 'suspended'] &&
+        data.standing is map &&
+        data.standing.keys().hasAll(['lateReturns', 'noShows', 'lateCancellations', 'incidentReports', 'restrictedUntil']) &&
+        data.standing.keys().hasOnly(['lateReturns', 'noShows', 'lateCancellations', 'incidentReports', 'restrictedUntil']) &&
+        data.standing.lateReturns is int && data.standing.lateReturns >= 0 &&
+        data.standing.noShows is int && data.standing.noShows >= 0 &&
+        data.standing.lateCancellations is int && data.standing.lateCancellations >= 0 &&
+        data.standing.incidentReports is int && data.standing.incidentReports >= 0 &&
+        (data.standing.restrictedUntil == null || (data.standing.restrictedUntil is string && data.standing.restrictedUntil.size() <= 64)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidResource(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'ownerDisplayName', 'ownerVerificationState', 'title',
+          'resourceType', 'category', 'description', 'location', 'priceMode',
+          'transferMode', 'price', 'riskLevel', 'trainingRequired', 'supervisedAccess',
+          'approvalMode', 'highDemand', 'policies', 'assignedSupervisorIds',
+          'listingState', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'ownerDisplayName', 'ownerVerificationState', 'organisationName',
+          'title', 'resourceType', 'category', 'description', 'photos', 'location',
+          'priceMode', 'transferMode', 'price', 'currency', 'priceUnit', 'bookingContactOrUrl',
+          'riskLevel', 'trainingRequired', 'quizId', 'supervisedAccess', 'allowedUsers',
+          'safetyNotes', 'ppe', 'prohibitedUses', 'conditionSummary', 'accessories',
+          'collectionPoint', 'setupNotes', 'returnInstructions', 'approvalMode', 'highDemand',
+          'policies', 'assignedSupervisorIds', 'listingState', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.ownerDisplayName is string && data.ownerDisplayName.size() >= 1 && data.ownerDisplayName.size() <= 120 &&
+        data.ownerVerificationState in ['unverified', 'verified', 'flagged', 'suspended'] &&
+        (!('organisationName' in data) || (data.organisationName is string && data.organisationName.size() <= 160)) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 160 &&
+        data.resourceType in ['equipment', 'workspace'] &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 2500 &&
+        (!('photos' in data) || isBoundedStringList(data.photos, 5)) &&
+        data.location is string && data.location.size() >= 1 && data.location.size() <= 200 &&
+        data.priceMode in ['free', 'paid'] &&
+        data.transferMode in ['temporary', 'permanent'] &&
+        data.price is number && data.price >= 0 &&
+        (!('currency' in data) || (data.currency is string && data.currency.size() <= 8)) &&
+        (!('priceUnit' in data) || (data.priceUnit is string && data.priceUnit.size() <= 40)) &&
+        (!('bookingContactOrUrl' in data) || (data.bookingContactOrUrl is string && data.bookingContactOrUrl.size() <= 300)) &&
+        data.riskLevel in ['low', 'medium', 'high'] &&
+        data.trainingRequired is bool &&
+        (!('quizId' in data) || (data.quizId is string && data.quizId.size() <= 128)) &&
+        data.supervisedAccess is bool &&
+        (!('allowedUsers' in data) || (data.allowedUsers is string && data.allowedUsers.size() <= 300)) &&
+        (!('safetyNotes' in data) || (data.safetyNotes is string && data.safetyNotes.size() <= 1500)) &&
+        (!('ppe' in data) || isBoundedStringList(data.ppe, 20)) &&
+        (!('prohibitedUses' in data) || isBoundedStringList(data.prohibitedUses, 20)) &&
+        (!('conditionSummary' in data) || (data.conditionSummary is string && data.conditionSummary.size() <= 800)) &&
+        (!('accessories' in data) || isBoundedStringList(data.accessories, 20)) &&
+        (!('collectionPoint' in data) || (data.collectionPoint is string && data.collectionPoint.size() <= 300)) &&
+        (!('setupNotes' in data) || (data.setupNotes is string && data.setupNotes.size() <= 800)) &&
+        (!('returnInstructions' in data) || (data.returnInstructions is string && data.returnInstructions.size() <= 800)) &&
+        data.approvalMode in ['auto-if-low-risk', 'owner-review', 'supervisor-review'] &&
+        data.highDemand is bool &&
+        data.policies is map &&
+        isBoundedStringList(data.assignedSupervisorIds, 10) &&
+        data.listingState in ['draft', 'pending-admin-check', 'active', 'paused'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSlot(data) {
+      return data.keys().hasAll([
+          'id', 'resourceId', 'ownerId', 'isPublic', 'start', 'end', 'state',
+          'waitlistCount', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'resourceId', 'ownerId', 'isPublic', 'start', 'end', 'state',
+          'blockReason', 'bookedRequestId', 'waitlistCount', 'hasPendingWaitlist',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.resourceId) &&
+        isValidId(data.ownerId) &&
+        data.isPublic is bool &&
+        data.start is string && data.start.size() >= 10 && data.start.size() <= 64 &&
+        data.end is string && data.end.size() >= 10 && data.end.size() <= 64 &&
+        data.state in ['available', 'held', 'confirmed', 'blocked'] &&
+        (!('blockReason' in data) || (data.blockReason is string && data.blockReason.size() <= 300)) &&
+        (!('bookedRequestId' in data) || data.bookedRequestId == null || isValidId(data.bookedRequestId)) &&
+        data.waitlistCount is number && data.waitlistCount >= 0 &&
+        (!('hasPendingWaitlist' in data) || data.hasPendingWaitlist is bool) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidQuiz(data) {
+      return data.keys().hasAll([
+          'id', 'resourceId', 'ownerId', 'isPublic', 'title', 'questions',
+          'passMarkPercent', 'maxAttemptsPerDay', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'resourceId', 'ownerId', 'isPublic', 'title', 'questions',
+          'passMarkPercent', 'maxAttemptsPerDay', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.resourceId) &&
+        isValidId(data.ownerId) &&
+        data.isPublic is bool &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.questions is list && data.questions.size() >= 1 && data.questions.size() <= 20 &&
+        data.questions[0] is map &&
+        data.passMarkPercent is number && data.passMarkPercent >= 1 && data.passMarkPercent <= 100 &&
+        data.maxAttemptsPerDay is number && data.maxAttemptsPerDay >= 1 && data.maxAttemptsPerDay <= 20 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEligibility(data) {
+      return data.keys().hasAll([
+          'id', 'userId', 'userDisplayName', 'resourceId', 'resourceTitle',
+          'ownerId', 'assignedSupervisorIds', 'attemptsToday', 'lastAttemptDate',
+          'status', 'expiresAt', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'userDisplayName', 'resourceId', 'resourceTitle',
+          'ownerId', 'assignedSupervisorIds', 'quizScore', 'attemptsToday',
+          'lastAttemptDate', 'status', 'approvedBy', 'approvedAt', 'expiresAt',
+          'notes', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidCompositeId(data.id) &&
+        isValidId(data.userId) &&
+        data.userDisplayName is string && data.userDisplayName.size() >= 1 && data.userDisplayName.size() <= 120 &&
+        isValidId(data.resourceId) &&
+        data.resourceTitle is string && data.resourceTitle.size() >= 1 && data.resourceTitle.size() <= 160 &&
+        isValidId(data.ownerId) &&
+        isBoundedStringList(data.assignedSupervisorIds, 10) &&
+        (!('quizScore' in data) || (data.quizScore is number && data.quizScore >= 0 && data.quizScore <= 100)) &&
+        data.attemptsToday is number && data.attemptsToday >= 0 && data.attemptsToday <= 50 &&
+        data.lastAttemptDate is string && data.lastAttemptDate.size() <= 20 &&
+        data.status in ['not-started', 'passed', 'failed', 'awaiting-supervisor', 'approved', 'rejected', 'expired'] &&
+        (!('approvedBy' in data) || (data.approvedBy is string && data.approvedBy.size() <= 128)) &&
+        (!('approvedAt' in data) || (data.approvedAt is string && data.approvedAt.size() <= 64)) &&
+        data.expiresAt is string && data.expiresAt.size() <= 64 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRequest(data) {
+      return data.keys().hasAll([
+          'id', 'resourceId', 'resourceTitle', 'ownerId', 'assignedSupervisorIds',
+          'requesterId', 'requesterDisplayName', 'requestType', 'status',
+          'eligibilitySnapshot', 'message', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'resourceId', 'resourceTitle', 'ownerId', 'assignedSupervisorIds',
+          'requesterId', 'requesterDisplayName', 'requestType', 'slotId', 'slotStart',
+          'slotEnd', 'transferTerms', 'status', 'eligibilitySnapshot', 'message',
+          'decisionBy', 'decisionAt', 'decisionReasonCode', 'decisionNote', 'expiresAt',
+          'cancellationReason', 'isTimelyCancellation', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.resourceId) &&
+        data.resourceTitle is string && data.resourceTitle.size() >= 1 && data.resourceTitle.size() <= 160 &&
+        isValidId(data.ownerId) &&
+        isBoundedStringList(data.assignedSupervisorIds, 10) &&
+        isValidId(data.requesterId) &&
+        data.requesterDisplayName is string && data.requesterDisplayName.size() >= 1 && data.requesterDisplayName.size() <= 120 &&
+        data.requestType in ['borrow', 'rent', 'giveaway', 'sale'] &&
+        (!('slotId' in data) || (data.slotId is string && data.slotId.size() <= 128)) &&
+        (!('slotStart' in data) || (data.slotStart is string && data.slotStart.size() <= 64)) &&
+        (!('slotEnd' in data) || (data.slotEnd is string && data.slotEnd.size() <= 64)) &&
+        (!('transferTerms' in data) || (data.transferTerms is string && data.transferTerms.size() <= 1000)) &&
+        data.status in [
+          'draft', 'pending-review', 'confirmed', 'in-use', 'returned', 'rejected',
+          'cancelled', 'expired', 'waitlisted', 'offered', 'overdue',
+          'handover-recorded', 'transfer-complete'
+        ] &&
+        data.eligibilitySnapshot is map &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 1500 &&
+        (!('decisionBy' in data) || (data.decisionBy is string && data.decisionBy.size() <= 128)) &&
+        (!('decisionAt' in data) || (data.decisionAt is string && data.decisionAt.size() <= 64)) &&
+        (!('decisionReasonCode' in data) || (data.decisionReasonCode is string && data.decisionReasonCode.size() <= 80)) &&
+        (!('decisionNote' in data) || (data.decisionNote is string && data.decisionNote.size() <= 800)) &&
+        (!('expiresAt' in data) || (data.expiresAt is string && data.expiresAt.size() <= 64)) &&
+        (!('cancellationReason' in data) || (data.cancellationReason is string && data.cancellationReason.size() <= 600)) &&
+        (!('isTimelyCancellation' in data) || data.isTimelyCancellation is bool) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWaitlistEntry(data) {
+      return data.keys().hasAll([
+          'id', 'resourceId', 'resourceTitle', 'ownerId', 'slotId', 'userId',
+          'userDisplayName', 'joinedAt', 'status', 'position', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'resourceId', 'resourceTitle', 'ownerId', 'slotId', 'userId',
+          'userDisplayName', 'joinedAt', 'status', 'offerExpiresAt', 'position',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.resourceId) &&
+        data.resourceTitle is string && data.resourceTitle.size() >= 1 && data.resourceTitle.size() <= 160 &&
+        isValidId(data.ownerId) &&
+        isValidId(data.slotId) &&
+        isValidId(data.userId) &&
+        data.userDisplayName is string && data.userDisplayName.size() >= 1 && data.userDisplayName.size() <= 120 &&
+        data.joinedAt is string && data.joinedAt.size() <= 64 &&
+        data.status in ['waiting', 'offered', 'accepted', 'expired', 'left'] &&
+        (!('offerExpiresAt' in data) || (data.offerExpiresAt is string && data.offerExpiresAt.size() <= 64)) &&
+        data.position is number && data.position >= 1 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidHandover(data) {
+      return data.keys().hasAll([
+          'id', 'requestId', 'resourceId', 'ownerId', 'requesterId', 'assignedSupervisorIds',
+          'checkoutAt', 'checkoutBy', 'beforeCondition', 'beforePhotos', 'accessories',
+          'dueAt', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'requestId', 'resourceId', 'ownerId', 'requesterId', 'assignedSupervisorIds',
+          'checkoutAt', 'checkoutBy', 'beforeCondition', 'beforePhotos', 'accessories',
+          'dueAt', 'returnedAt', 'returnedRecordedBy', 'returnCondition', 'returnPhotos',
+          'accessoriesReturned', 'issuesReported', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.requestId) &&
+        isValidId(data.resourceId) &&
+        isValidId(data.ownerId) &&
+        isValidId(data.requesterId) &&
+        isBoundedStringList(data.assignedSupervisorIds, 10) &&
+        data.checkoutAt is string && data.checkoutAt.size() <= 64 &&
+        isValidId(data.checkoutBy) &&
+        data.beforeCondition is string && data.beforeCondition.size() >= 1 && data.beforeCondition.size() <= 1000 &&
+        isBoundedStringList(data.beforePhotos, 5) &&
+        data.accessories is list && data.accessories.size() <= 20 &&
+        data.dueAt is string && data.dueAt.size() <= 64 &&
+        (!('returnedAt' in data) || (data.returnedAt is string && data.returnedAt.size() <= 64)) &&
+        (!('returnedRecordedBy' in data) || isValidId(data.returnedRecordedBy)) &&
+        (!('returnCondition' in data) || (data.returnCondition is string && data.returnCondition.size() <= 1000)) &&
+        (!('returnPhotos' in data) || isBoundedStringList(data.returnPhotos, 5)) &&
+        (!('accessoriesReturned' in data) || (data.accessoriesReturned is list && data.accessoriesReturned.size() <= 20)) &&
+        (!('issuesReported' in data) || (data.issuesReported is string && data.issuesReported.size() <= 1000)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidIncident(data) {
+      return data.keys().hasAll([
+          'id', 'resourceId', 'resourceTitle', 'requestId', 'ownerId', 'assignedSupervisorIds',
+          'reportedBy', 'reportedByDisplayName', 'reportedAgainstUserId', 'reportedAgainstDisplayName',
+          'title', 'description', 'evidenceRefs', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'resourceId', 'resourceTitle', 'requestId', 'ownerId', 'assignedSupervisorIds',
+          'reportedBy', 'reportedByDisplayName', 'reportedAgainstUserId', 'reportedAgainstDisplayName',
+          'title', 'description', 'evidenceRefs', 'status', 'response', 'respondedAt',
+          'aiSummary', 'decision', 'decisionReason', 'resolvedBy', 'resolvedAt',
+          'escalatedToAdmin', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.resourceId) &&
+        data.resourceTitle is string && data.resourceTitle.size() >= 1 && data.resourceTitle.size() <= 160 &&
+        isValidId(data.requestId) &&
+        isValidId(data.ownerId) &&
+        isBoundedStringList(data.assignedSupervisorIds, 10) &&
+        isValidId(data.reportedBy) &&
+        data.reportedByDisplayName is string && data.reportedByDisplayName.size() >= 1 && data.reportedByDisplayName.size() <= 120 &&
+        isValidId(data.reportedAgainstUserId) &&
+        data.reportedAgainstDisplayName is string && data.reportedAgainstDisplayName.size() >= 1 && data.reportedAgainstDisplayName.size() <= 120 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 2000 &&
+        isBoundedStringList(data.evidenceRefs, 5) &&
+        data.status in ['open', 'awaiting-response', 'under-review', 'resolved'] &&
+        (!('response' in data) || (data.response is string && data.response.size() <= 2000)) &&
+        (!('respondedAt' in data) || (data.respondedAt is string && data.respondedAt.size() <= 64)) &&
+        (!('aiSummary' in data) || data.aiSummary is map) &&
+        (!('decision' in data) || (data.decision is string && data.decision.size() <= 800)) &&
+        (!('decisionReason' in data) || (data.decisionReason is string && data.decisionReason.size() <= 1200)) &&
+        (!('resolvedBy' in data) || isValidId(data.resolvedBy)) &&
+        (!('resolvedAt' in data) || (data.resolvedAt is string && data.resolvedAt.size() <= 64)) &&
+        (!('escalatedToAdmin' in data) || data.escalatedToAdmin is bool) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll([
+          'id', 'recipientId', 'senderId', 'type', 'title', 'message', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'recipientId', 'senderId', 'type', 'title', 'message',
+          'relatedRecordId', 'readAt', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.recipientId) &&
+        isValidId(data.senderId) &&
+        data.type is string && data.type.size() >= 1 && data.type.size() <= 60 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 1000 &&
+        (!('relatedRecordId' in data) || (data.relatedRecordId is string && data.relatedRecordId.size() <= 128)) &&
+        (!('readAt' in data) || (data.readAt is string && data.readAt.size() <= 64)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'id', 'actorId', 'actorDisplayName', 'actorRole', 'action',
+          'entityType', 'entityId', 'summary', 'timestamp'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'actorId', 'actorDisplayName', 'actorRole', 'action',
+          'entityType', 'entityId', 'reasonCode', 'summary', 'timestamp'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.actorId) &&
+        data.actorDisplayName is string && data.actorDisplayName.size() >= 1 && data.actorDisplayName.size() <= 120 &&
+        data.actorRole in ['requester', 'owner', 'supervisor', 'admin'] &&
+        data.action is string && data.action.size() >= 1 && data.action.size() <= 80 &&
+        data.entityType in ['resource', 'request', 'eligibility', 'incident', 'waitlist', 'handover', 'admin'] &&
+        isValidCompositeId(data.entityId) &&
+        (!('reasonCode' in data) || (data.reasonCode is string && data.reasonCode.size() <= 80)) &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 800 &&
+        data.timestamp is timestamp;
+    }
+
+    // 4. Collection Match Blocks
+    match /test/connection {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    match /admins/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+        isValidId(userId) &&
+        isValidUser(incoming()) &&
+        isOwner(userId) &&
+        incoming().id == request.auth.uid &&
+        incoming().role in ['requester', 'owner'] &&
+        incoming().verificationState == 'unverified' &&
+        incoming().standing.lateReturns == 0 &&
+        incoming().standing.noShows == 0 &&
+        incoming().standing.lateCancellations == 0 &&
+        incoming().standing.incidentReports == 0 &&
+        incoming().standing.restrictedUntil == null &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUser(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().role == existing().role &&
+            incoming().verificationState == existing().verificationState &&
+            incoming().standing == existing().standing &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'organisationName', 'userTypeDescription', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /resources/{resourceId} {
+      allow get: if isValidId(resourceId) && (
+        existing().listingState == 'active' ||
+        (isSignedIn() && (existing().ownerId == request.auth.uid || request.auth.uid in existing().assignedSupervisorIds || isAdmin()))
+      );
+      allow list: if resource.data.listingState == 'active' ||
+        (isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.uid in resource.data.assignedSupervisorIds || isAdmin()));
+      allow create: if isVerifiedUser() &&
+        isValidId(resourceId) &&
+        isValidResource(incoming()) &&
+        incoming().id == resourceId &&
+        incoming().ownerId == request.auth.uid &&
+        (isOwnerRoleUser() || isAdmin()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            incoming().ownerVerificationState == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationState &&
+            (
+              (incoming().riskLevel == 'high' && incoming().ownerVerificationState != 'verified' && incoming().listingState == 'pending-admin-check') ||
+              ((incoming().riskLevel != 'high' || incoming().ownerVerificationState == 'verified') && incoming().listingState in ['active', 'draft', 'paused'])
+            )
+          )
+        );
+      allow update: if isVerifiedUser() &&
+        isValidId(resourceId) &&
+        isValidResource(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().ownerVerificationState == existing().ownerVerificationState &&
+            (existing().listingState != 'pending-admin-check' || incoming().listingState == 'pending-admin-check') &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'description', 'photos', 'location', 'priceMode', 'price', 'currency',
+              'priceUnit', 'bookingContactOrUrl', 'safetyNotes', 'ppe', 'prohibitedUses',
+              'conditionSummary', 'accessories', 'collectionPoint', 'setupNotes',
+              'returnInstructions', 'policies', 'listingState', 'quizId', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(resourceId) && (isAdmin() || (isVerifiedUser() && existing().ownerId == request.auth.uid));
+
+      match /slots/{slotId} {
+        allow get: if isValidId(resourceId) && isValidId(slotId) && (
+          existing().isPublic == true ||
+          (isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin()))
+        );
+        allow list: if resource.data.isPublic == true ||
+          (isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin()));
+        allow create: if isVerifiedUser() &&
+          isValidId(resourceId) &&
+          isValidId(slotId) &&
+          isValidSlot(incoming()) &&
+          incoming().id == slotId &&
+          incoming().resourceId == resourceId &&
+          exists(/databases/$(database)/documents/resources/$(resourceId)) &&
+          incoming().ownerId == get(/databases/$(database)/documents/resources/$(resourceId)).data.ownerId &&
+          (incoming().ownerId == request.auth.uid || isAdmin()) &&
+          incoming().waitlistCount == 0 &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isVerifiedUser() &&
+          isValidId(resourceId) &&
+          isValidId(slotId) &&
+          isValidSlot(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().resourceId == existing().resourceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() ||
+            (
+              existing().ownerId == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'state', 'blockReason', 'bookedRequestId', 'isPublic',
+                'waitlistCount', 'hasPendingWaitlist', 'updatedAt'
+              ])
+            ) ||
+            (
+              request.auth.uid in get(/databases/$(database)/documents/resources/$(resourceId)).data.assignedSupervisorIds &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'state', 'blockReason', 'bookedRequestId', 'hasPendingWaitlist', 'updatedAt'
+              ])
+            ) ||
+            (
+              existing().state == 'available' &&
+              incoming().state in ['held', 'confirmed'] &&
+              incoming().bookedRequestId is string &&
+              existsAfter(/databases/$(database)/documents/requests/$(incoming().bookedRequestId)) &&
+              getAfter(/databases/$(database)/documents/requests/$(incoming().bookedRequestId)).data.requesterId == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['state', 'bookedRequestId', 'updatedAt'])
+            ) ||
+            (
+              existing().state == 'confirmed' &&
+              incoming().state == 'confirmed' &&
+              incoming().waitlistCount == existing().waitlistCount + 1 &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['waitlistCount', 'hasPendingWaitlist', 'updatedAt'])
+            ) ||
+            (
+              existing().state in ['held', 'confirmed'] &&
+              incoming().state == 'available' &&
+              existing().bookedRequestId is string &&
+              get(/databases/$(database)/documents/requests/$(existing().bookedRequestId)).data.requesterId == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['state', 'bookedRequestId', 'hasPendingWaitlist', 'updatedAt'])
+            ) ||
+            (
+              existing().state in ['held', 'available'] &&
+              incoming().state == 'confirmed' &&
+              incoming().bookedRequestId is string &&
+              existsAfter(/databases/$(database)/documents/requests/$(incoming().bookedRequestId)) &&
+              getAfter(/databases/$(database)/documents/requests/$(incoming().bookedRequestId)).data.requesterId == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['state', 'bookedRequestId', 'hasPendingWaitlist', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(resourceId) && isValidId(slotId) && (
+          isAdmin() ||
+          (isVerifiedUser() && existing().ownerId == request.auth.uid)
+        );
+      }
+    }
+
+    match /quizzes/{quizId} {
+      allow get: if isValidId(quizId) && (
+        existing().isPublic == true ||
+        (isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin()))
+      );
+      allow list: if resource.data.isPublic == true ||
+        (isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin()));
+      allow create: if isVerifiedUser() &&
+        isValidId(quizId) &&
+        isValidQuiz(incoming()) &&
+        incoming().id == quizId &&
+        incoming().ownerId == request.auth.uid &&
+        exists(/databases/$(database)/documents/resources/$(incoming().resourceId)) &&
+        get(/databases/$(database)/documents/resources/$(incoming().resourceId)).data.ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(quizId) &&
+        isValidQuiz(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().resourceId == existing().resourceId &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['title', 'questions', 'passMarkPercent', 'maxAttemptsPerDay', 'isPublic', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(quizId) && (isAdmin() || (isVerifiedUser() && existing().ownerId == request.auth.uid));
+    }
+
+    match /eligibilityRecords/{recordId} {
+      allow get: if isSignedIn() && isValidCompositeId(recordId) && (
+        existing().userId == request.auth.uid ||
+        existing().ownerId == request.auth.uid ||
+        request.auth.uid in existing().assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in resource.data.assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow create: if isVerifiedUser() &&
+        isValidCompositeId(recordId) &&
+        isValidEligibility(incoming()) &&
+        incoming().id == recordId &&
+        incoming().userId == request.auth.uid &&
+        exists(/databases/$(database)/documents/resources/$(incoming().resourceId)) &&
+        incoming().status in ['passed', 'failed', 'awaiting-supervisor', 'approved'] &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidCompositeId(recordId) &&
+        isValidEligibility(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().resourceId == existing().resourceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            existing().userId == request.auth.uid &&
+            incoming().status in ['passed', 'failed', 'awaiting-supervisor', 'approved'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['quizScore', 'attemptsToday', 'lastAttemptDate', 'status', 'expiresAt', 'updatedAt'])
+          ) ||
+          (
+            (existing().ownerId == request.auth.uid || request.auth.uid in existing().assignedSupervisorIds) &&
+            incoming().status in ['approved', 'rejected'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'approvedBy', 'approvedAt', 'notes', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /requests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) && (
+        existing().requesterId == request.auth.uid ||
+        existing().ownerId == request.auth.uid ||
+        request.auth.uid in existing().assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in resource.data.assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow create: if isVerifiedUser() &&
+        isValidId(requestId) &&
+        isValidRequest(incoming()) &&
+        incoming().id == requestId &&
+        incoming().requesterId == request.auth.uid &&
+        exists(/databases/$(database)/documents/resources/$(incoming().resourceId)) &&
+        incoming().status in ['pending-review', 'confirmed'] &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(requestId) &&
+        isValidRequest(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().resourceId == existing().resourceId &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().requesterId == existing().requesterId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            !(existing().status in ['returned', 'rejected', 'cancelled', 'expired', 'transfer-complete']) && (
+              (
+                (existing().ownerId == request.auth.uid || request.auth.uid in existing().assignedSupervisorIds) &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'status', 'decisionBy', 'decisionAt', 'decisionReasonCode', 'decisionNote', 'updatedAt'
+                ])
+              ) ||
+              (
+                existing().requesterId == request.auth.uid &&
+                incoming().status in ['cancelled', 'returned', 'overdue'] &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'status', 'cancellationReason', 'isTimelyCancellation', 'decisionReasonCode', 'updatedAt'
+                ])
+              )
+            )
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /waitlistEntries/{entryId} {
+      allow get: if isSignedIn() && isValidId(entryId) && (
+        existing().userId == request.auth.uid ||
+        existing().ownerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isVerifiedUser() &&
+        isValidId(entryId) &&
+        isValidWaitlistEntry(incoming()) &&
+        incoming().id == entryId &&
+        incoming().userId == request.auth.uid &&
+        exists(/databases/$(database)/documents/resources/$(incoming().resourceId)) &&
+        incoming().status == 'waiting' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(entryId) &&
+        isValidWaitlistEntry(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().resourceId == existing().resourceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            existing().userId == request.auth.uid &&
+            incoming().status in ['accepted', 'left'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ) ||
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'offerExpiresAt', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /handoverRecords/{handoverId} {
+      allow get: if isSignedIn() && isValidId(handoverId) && (
+        existing().requesterId == request.auth.uid ||
+        existing().ownerId == request.auth.uid ||
+        request.auth.uid in existing().assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in resource.data.assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow create: if isVerifiedUser() &&
+        isValidId(handoverId) &&
+        isValidHandover(incoming()) &&
+        incoming().id == handoverId &&
+        exists(/databases/$(database)/documents/requests/$(incoming().requestId)) &&
+        incoming().checkoutBy == request.auth.uid &&
+        (
+          incoming().ownerId == request.auth.uid ||
+          request.auth.uid in incoming().assignedSupervisorIds ||
+          isAdmin()
+        ) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(handoverId) &&
+        isValidHandover(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().requestId == existing().requestId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            !('returnedAt' in existing()) &&
+            (
+              existing().requesterId == request.auth.uid ||
+              existing().ownerId == request.auth.uid ||
+              request.auth.uid in existing().assignedSupervisorIds
+            ) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'returnedAt', 'returnedRecordedBy', 'returnCondition', 'returnPhotos',
+              'accessoriesReturned', 'issuesReported', 'dueAt', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /incidents/{incidentId} {
+      allow get: if isSignedIn() && isValidId(incidentId) && (
+        existing().reportedBy == request.auth.uid ||
+        existing().reportedAgainstUserId == request.auth.uid ||
+        existing().ownerId == request.auth.uid ||
+        request.auth.uid in existing().assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.reportedBy == request.auth.uid ||
+        resource.data.reportedAgainstUserId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in resource.data.assignedSupervisorIds ||
+        isAdmin()
+      );
+      allow create: if isVerifiedUser() &&
+        isValidId(incidentId) &&
+        isValidIncident(incoming()) &&
+        incoming().id == incidentId &&
+        incoming().reportedBy == request.auth.uid &&
+        exists(/databases/$(database)/documents/requests/$(incoming().requestId)) &&
+        incoming().status == 'awaiting-response' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(incidentId) &&
+        isValidIncident(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().requestId == existing().requestId &&
+        incoming().reportedBy == existing().reportedBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            existing().status != 'resolved' && (
+              (
+                existing().reportedAgainstUserId == request.auth.uid &&
+                incoming().status == 'under-review' &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['response', 'respondedAt', 'status', 'updatedAt'])
+              ) ||
+              (
+                (existing().ownerId == request.auth.uid || request.auth.uid in existing().assignedSupervisorIds) &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'aiSummary', 'status', 'decision', 'decisionReason',
+                  'resolvedBy', 'resolvedAt', 'escalatedToAdmin', 'updatedAt'
+                ])
+              )
+            )
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isValidId(notificationId) && (
+        existing().recipientId == request.auth.uid || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.recipientId == request.auth.uid || isAdmin()
+      );
+      allow create: if isVerifiedUser() &&
+        isValidId(notificationId) &&
+        isValidNotification(incoming()) &&
+        incoming().id == notificationId &&
+        incoming().senderId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(notificationId) &&
+        isValidNotification(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().recipientId == existing().recipientId &&
+        incoming().senderId == existing().senderId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (existing().recipientId == request.auth.uid || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['readAt', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && (
+        existing().actorId == request.auth.uid || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.actorId == request.auth.uid || isAdmin()
+      );
+      allow create: if isVerifiedUser() &&
+        isValidId(logId) &&
+        isValidAuditLog(incoming()) &&
+        incoming().id == logId &&
+        incoming().actorId == request.auth.uid &&
+        incoming().timestamp == request.time;
+      allow update, delete: if false;
+    }
+  }
+}

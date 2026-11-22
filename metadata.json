@@ -1,0 +1,6 @@
+{
+  "name": "IDLETOIDEA - Shared Equipment & Spaces Platform",
+  "description": "A trusted shared-resource platform for makerspaces and innovation centres to unlock idle equipment and spaces with risk-based eligibility, fair allocation, and evidence-based condition tracking in an immersive cinematic interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

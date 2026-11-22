@@ -1,0 +1,353 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated platform user profile with private contact PII and role standing.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "role": { "type": "string", "enum": ["requester", "owner", "supervisor", "admin"] },
+        "organisationName": { "type": "string", "maxLength": 160 },
+        "userTypeDescription": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "verificationState": { "type": "string", "enum": ["unverified", "verified", "flagged", "suspended"] },
+        "standing": { "type": "object", "description": "Account standing counters and restriction timestamp" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "displayName", "email", "role", "userTypeDescription", "verificationState", "standing", "createdAt", "updatedAt"]
+    },
+    "AdminMarker": {
+      "title": "AdminMarker",
+      "description": "Trusted admin role marker document managed via server or Firebase Console.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "grantedAt": { "type": "string", "format": "date-time" },
+        "note": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["userId", "grantedAt"]
+    },
+    "Resource": {
+      "title": "Resource",
+      "description": "Listed makerspace equipment or workspace with safety prerequisites and allocation policies.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerDisplayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "ownerVerificationState": { "type": "string", "enum": ["unverified", "verified", "flagged", "suspended"] },
+        "organisationName": { "type": "string", "maxLength": 160 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "resourceType": { "type": "string", "enum": ["equipment", "workspace"] },
+        "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 2500 },
+        "photos": { "type": "array", "description": "Up to 5 image URLs" },
+        "location": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "priceMode": { "type": "string", "enum": ["free", "paid"] },
+        "transferMode": { "type": "string", "enum": ["temporary", "permanent"] },
+        "price": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 8 },
+        "priceUnit": { "type": "string", "maxLength": 40 },
+        "bookingContactOrUrl": { "type": "string", "maxLength": 300 },
+        "riskLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+        "trainingRequired": { "type": "boolean" },
+        "quizId": { "type": "string", "maxLength": 128 },
+        "supervisedAccess": { "type": "boolean" },
+        "allowedUsers": { "type": "string", "maxLength": 300 },
+        "safetyNotes": { "type": "string", "maxLength": 1500 },
+        "ppe": { "type": "array" },
+        "prohibitedUses": { "type": "array" },
+        "conditionSummary": { "type": "string", "maxLength": 800 },
+        "accessories": { "type": "array" },
+        "collectionPoint": { "type": "string", "maxLength": 300 },
+        "setupNotes": { "type": "string", "maxLength": 800 },
+        "returnInstructions": { "type": "string", "maxLength": 800 },
+        "approvalMode": { "type": "string", "enum": ["auto-if-low-risk", "owner-review", "supervisor-review"] },
+        "highDemand": { "type": "boolean" },
+        "policies": { "type": "object" },
+        "assignedSupervisorIds": { "type": "array" },
+        "listingState": { "type": "string", "enum": ["draft", "pending-admin-check", "active", "paused"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "ownerId", "ownerDisplayName", "ownerVerificationState", "title", "resourceType",
+        "category", "description", "location", "priceMode", "transferMode", "price",
+        "riskLevel", "trainingRequired", "supervisedAccess", "approvalMode", "highDemand",
+        "policies", "assignedSupervisorIds", "listingState", "createdAt", "updatedAt"
+      ]
+    },
+    "Slot": {
+      "title": "Slot",
+      "description": "Bookable time slot for a scheduled resource.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "isPublic": { "type": "boolean" },
+        "start": { "type": "string", "format": "date-time", "maxLength": 64 },
+        "end": { "type": "string", "format": "date-time", "maxLength": 64 },
+        "state": { "type": "string", "enum": ["available", "held", "confirmed", "blocked"] },
+        "blockReason": { "type": "string", "maxLength": 300 },
+        "bookedRequestId": { "type": "string", "maxLength": 128 },
+        "waitlistCount": { "type": "number" },
+        "hasPendingWaitlist": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "resourceId", "ownerId", "isPublic", "start", "end", "state", "waitlistCount", "createdAt", "updatedAt"]
+    },
+    "Quiz": {
+      "title": "Quiz",
+      "description": "Safety assessment linked to a resource requiring training certification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "isPublic": { "type": "boolean" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "questions": { "type": "array" },
+        "passMarkPercent": { "type": "number" },
+        "maxAttemptsPerDay": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "resourceId", "ownerId", "isPublic", "title", "questions", "passMarkPercent", "maxAttemptsPerDay", "createdAt", "updatedAt"]
+    },
+    "EligibilityRecord": {
+      "title": "EligibilityRecord",
+      "description": "User training quiz score and supervisor sign-off record for a specific resource.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 260, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userDisplayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "resourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assignedSupervisorIds": { "type": "array" },
+        "quizScore": { "type": "number" },
+        "attemptsToday": { "type": "number" },
+        "lastAttemptDate": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "enum": ["not-started", "passed", "failed", "awaiting-supervisor", "approved", "rejected", "expired"] },
+        "approvedBy": { "type": "string", "maxLength": 128 },
+        "approvedAt": { "type": "string", "maxLength": 64 },
+        "expiresAt": { "type": "string", "maxLength": 64 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userDisplayName", "resourceId", "resourceTitle", "ownerId", "assignedSupervisorIds", "attemptsToday", "lastAttemptDate", "status", "expiresAt", "createdAt", "updatedAt"]
+    },
+    "RequestItem": {
+      "title": "RequestItem",
+      "description": "Booking or permanent transfer request with eligibility snapshot and decision audit.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assignedSupervisorIds": { "type": "array" },
+        "requesterId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "requesterDisplayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "requestType": { "type": "string", "enum": ["borrow", "rent", "giveaway", "sale"] },
+        "slotId": { "type": "string", "maxLength": 128 },
+        "slotStart": { "type": "string", "maxLength": 64 },
+        "slotEnd": { "type": "string", "maxLength": 64 },
+        "transferTerms": { "type": "string", "maxLength": 1000 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft", "pending-review", "confirmed", "in-use", "returned", "rejected",
+            "cancelled", "expired", "waitlisted", "offered", "overdue",
+            "handover-recorded", "transfer-complete"
+          ]
+        },
+        "eligibilitySnapshot": { "type": "object" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "decisionBy": { "type": "string", "maxLength": 128 },
+        "decisionAt": { "type": "string", "maxLength": 64 },
+        "decisionReasonCode": { "type": "string", "maxLength": 80 },
+        "decisionNote": { "type": "string", "maxLength": 800 },
+        "cancellationReason": { "type": "string", "maxLength": 600 },
+        "isTimelyCancellation": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "resourceId", "resourceTitle", "ownerId", "assignedSupervisorIds", "requesterId", "requesterDisplayName", "requestType", "status", "eligibilitySnapshot", "message", "createdAt", "updatedAt"]
+    },
+    "WaitlistEntry": {
+      "title": "WaitlistEntry",
+      "description": "First-eligible FIFO waitlist entry for a booked slot.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "slotId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userDisplayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "joinedAt": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["waiting", "offered", "accepted", "expired", "left"] },
+        "offerExpiresAt": { "type": "string", "maxLength": 64 },
+        "position": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "resourceId", "resourceTitle", "ownerId", "slotId", "userId", "userDisplayName", "joinedAt", "status", "position", "createdAt", "updatedAt"]
+    },
+    "HandoverRecord": {
+      "title": "HandoverRecord",
+      "description": "Before-and-after equipment handover condition inspection record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "requesterId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assignedSupervisorIds": { "type": "array" },
+        "checkoutAt": { "type": "string", "maxLength": 64 },
+        "checkoutBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "beforeCondition": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "beforePhotos": { "type": "array" },
+        "accessories": { "type": "array" },
+        "dueAt": { "type": "string", "maxLength": 64 },
+        "returnedAt": { "type": "string", "maxLength": 64 },
+        "returnedRecordedBy": { "type": "string", "maxLength": 128 },
+        "returnCondition": { "type": "string", "maxLength": 1000 },
+        "returnPhotos": { "type": "array" },
+        "accessoriesReturned": { "type": "array" },
+        "issuesReported": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "requestId", "resourceId", "ownerId", "requesterId", "assignedSupervisorIds", "checkoutAt", "checkoutBy", "beforeCondition", "beforePhotos", "accessories", "dueAt", "createdAt", "updatedAt"]
+    },
+    "Incident": {
+      "title": "Incident",
+      "description": "Condition inquiry or incident report with role-restricted evidence and human resolution.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resourceTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assignedSupervisorIds": { "type": "array" },
+        "reportedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reportedByDisplayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "reportedAgainstUserId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reportedAgainstDisplayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "evidenceRefs": { "type": "array" },
+        "status": { "type": "string", "enum": ["open", "awaiting-response", "under-review", "resolved"] },
+        "response": { "type": "string", "maxLength": 2000 },
+        "respondedAt": { "type": "string", "maxLength": 64 },
+        "aiSummary": { "type": "object" },
+        "decision": { "type": "string", "maxLength": 800 },
+        "decisionReason": { "type": "string", "maxLength": 1200 },
+        "resolvedBy": { "type": "string", "maxLength": 128 },
+        "resolvedAt": { "type": "string", "maxLength": 64 },
+        "escalatedToAdmin": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "resourceId", "resourceTitle", "requestId", "ownerId", "assignedSupervisorIds", "reportedBy", "reportedByDisplayName", "reportedAgainstUserId", "reportedAgainstDisplayName", "title", "description", "evidenceRefs", "status", "createdAt", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Operational notification addressed to a specific participant.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recipientId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "maxLength": 60 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "relatedRecordId": { "type": "string", "maxLength": 128 },
+        "readAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "recipientId", "senderId", "type", "title", "message", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable append-only operational audit record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorDisplayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "actorRole": { "type": "string", "enum": ["requester", "owner", "supervisor", "admin"] },
+        "action": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "entityType": { "type": "string", "enum": ["resource", "request", "eligibility", "incident", "waitlist", "handover", "admin"] },
+        "entityId": { "type": "string", "minLength": 1, "maxLength": 260 },
+        "reasonCode": { "type": "string", "maxLength": 80 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 800 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "actorId", "actorDisplayName", "actorRole", "action", "entityType", "entityId", "summary", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Private user account profiles and standing."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminMarker" },
+      "description": "Admin role assignment markers."
+    },
+    "/resources/{resourceId}": {
+      "schema": { "$ref": "#/entities/Resource" },
+      "description": "Equipment and workspace listings."
+    },
+    "/resources/{resourceId}/slots/{slotId}": {
+      "schema": { "$ref": "#/entities/Slot" },
+      "description": "Bookable time slots belonging to a resource."
+    },
+    "/quizzes/{quizId}": {
+      "schema": { "$ref": "#/entities/Quiz" },
+      "description": "Safety training quizzes attached to listings."
+    },
+    "/eligibilityRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/EligibilityRecord" },
+      "description": "User training quiz attempts and supervisor approvals."
+    },
+    "/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/RequestItem" },
+      "description": "Booking and handover requests."
+    },
+    "/waitlistEntries/{entryId}": {
+      "schema": { "$ref": "#/entities/WaitlistEntry" },
+      "description": "First-eligible slot waitlist queue entries."
+    },
+    "/handoverRecords/{handoverId}": {
+      "schema": { "$ref": "#/entities/HandoverRecord" },
+      "description": "Check-out and return condition inspections."
+    },
+    "/incidents/{incidentId}": {
+      "schema": { "$ref": "#/entities/Incident" },
+      "description": "Condition inquiries and incident resolutions."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User notifications."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Append-only governance audit trail."
+    }
+  }
+}
